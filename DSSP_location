@@ -1,0 +1,122 @@
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+
+# 加载数据
+#data <- read_tsv("./alphafold3_fusions_residue_level.tsv")
+data <- read_tsv("./alphafold2_fusions_residue_level.tsv")
+
+# 确保 fusion 列存在并执行 mutate 操作
+data <- data %>%
+  mutate(fusion = if_else(str_detect(fusion, 'ossifying'), 'CREBBP-BCORL1 oft', fusion))
+data <- data %>%
+  mutate(fusion = if_else(str_detect(fusion, '_'), 'CREBBP-BCORL1 glioma', fusion))
+
+
+# you can come up with your own fusion name cleaning function
+clean_fusion_names <- function(x) {
+  str_replace_all(x, '_', ' ')
+}
+
+
+# 提取断裂点前后十个残基的数据
+extract_residues <- function(data, fusion_id) {
+  fusion_data <- data %>% filter(id == fusion_id)
+  breakpoint <- unique(fusion_data$breakpoint)
+  
+  # 提取断裂点前后十个残基
+  residues <- fusion_data %>% 
+    filter((res >= (breakpoint - 10) & res <= (breakpoint + 10)))
+  
+  return(residues)
+}
+
+# 提取所有融合蛋白的断裂点前后十个残基的数据
+all_residues <- data %>%
+  group_by(id, fusion) %>%
+  do(extract_residues(data, .$id))
+
+
+# 统计二级结构
+dssp_summary <- all_residues %>%
+  group_by(fusion, dssp) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)
+
+# 打印二级结构统计
+print(dssp_summary)
+
+fusion_order <- dssp_summary %>%
+  filter(dssp == '-')  %>%
+  arrange(desc(percentage)) %>%
+  pull(fusion)
+
+# 可视化二级结构分布（堆叠柱状图）
+dssp_summary %>%
+  mutate(fusion = factor(fusion, levels = fusion_order)) %>%
+  ggplot(aes(x = fusion, y = count, fill = dssp)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = NULL,
+       y = "residue number",
+       fill = "DSSP")
+
+# 可视化二级结构分布（百分比堆叠柱状图）
+dssp_summary %>%
+  mutate(fusion = factor(fusion, levels = fusion_order)) %>%
+  ggplot(aes(x = fusion, y = percentage, fill = dssp)) +
+  geom_bar(stat = "identity",  position = "fill") +
+  coord_flip() +
+  theme_minimal() +
+  labs( x = NULL,
+        y = "percentage",
+        fill = "DSSP")
+ggplot(dssp_summary, aes(x = fusion, y = percentage, fill = dssp)) +
+  geom_bar(stat = "identity", position = "fill") +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+       x = NULL,
+       y = "percentage",
+       fill = "DSSP")
+
+
+# 统计位置（loc）
+loc_summary <- all_residues %>%
+  group_by(fusion, loc) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = count / sum(count) * 100)
+
+print(loc_summary)
+
+fusion_order <- loc_summary %>%
+  filter(loc == 'S')  %>%
+  arrange(desc(percentage)) %>%
+  pull(fusion)
+
+
+# 可视化位置分布（堆叠柱状图）
+loc_summary %>%
+  mutate(fusion = factor(fusion, levels = fusion_order)) %>%
+  ggplot(aes(x = fusion, y = count, fill = loc)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+       x = NULL,
+       y = "residue number",
+       fill = "location")
+
+# 可视化位置分布
+loc_summary %>%
+  mutate(fusion = factor(fusion, levels = fusion_order)) %>%
+  ggplot(aes(x = fusion, y = percentage, fill = loc)) +
+  geom_bar(stat = "identity", position = "fill") +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    x = NULL,
+    y = "percentage",
+    fill = "location")
